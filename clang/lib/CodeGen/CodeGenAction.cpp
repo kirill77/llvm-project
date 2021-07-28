@@ -14,6 +14,8 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclGroup.h"
+#include "clang/AST/ASTDumper.h"
+#include <unordered_map>
 #include "clang/Basic/DiagnosticFrontend.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangStandard.h"
@@ -98,7 +100,8 @@ namespace clang {
         });
     }
 
-  class BackendConsumer : public ASTConsumer {
+    class BackendConsumer : public ASTConsumer {
+    friend class KirillASTConsumer;
     using LinkModule = CodeGenAction::LinkModule;
 
     virtual void anchor();
@@ -404,7 +407,97 @@ namespace clang {
   };
 
   void BackendConsumer::anchor() {}
-}
+  
+  class KirillASTConsumer : public BackendConsumer
+  {
+  public:
+    KirillASTConsumer(SourceManager &sourceManager, BackendAction Action, DiagnosticsEngine &Diags,
+                      const HeaderSearchOptions &HeaderSearchOpts,
+                      const PreprocessorOptions &PPOpts,
+                      const CodeGenOptions &CodeGenOpts,
+                      const TargetOptions &TargetOpts,
+                      const LangOptions &LangOpts, const std::string &InFile,
+                      SmallVector<LinkModule, 4> LinkModules,
+                      std::unique_ptr<raw_pwrite_stream> OS, LLVMContext &C,
+                      CoverageSourceInfo *CoverageInfo = nullptr)
+        : BackendConsumer(Action, Diags, HeaderSearchOpts, PPOpts, CodeGenOpts,
+                          TargetOpts, LangOpts, InFile, std::move(LinkModules),
+                          std::move(OS), C, CoverageInfo) { }
+
+    std::vector<int> m_nIncludeCalls; // number of calls we got at this include level
+    void resizeIncludeCalls(int iLevel)
+    {
+        if (iLevel < m_nIncludeCalls.size()) return;
+        auto prevSize = m_nIncludeCalls.size();
+        m_nIncludeCalls.resize(iLevel + 1);
+        for (int i = prevSize; i < m_nIncludeCalls.size(); ++i)
+        {
+            m_nIncludeCalls[i] = 0;
+        }
+    }
+    std::unordered_map<const Decl*, std::string> m_completedDecls;
+
+    /// HandleTopLevelDecl - Handle the specified top-level declaration.  This
+    /// is called by the parser to process every top-level Decl*.
+    ///
+    /// \returns true to continue parsing, or false to abort parsing.
+    virtual bool HandleTopLevelDecl(DeclGroupRef D) override
+    {
+        std::error_code OutErrorInfo;
+
+        resizeIncludeCalls(0);
+        llvm::raw_fd_ostream mainFile(llvm::StringRef("c:\\astDump.txt"), OutErrorInfo, m_nIncludeCalls[0]++ == 0 ? llvm::sys::fs::OF_None : llvm::sys::fs::OF_Append);
+        ASTDumper mainDumper(mainFile, *BackendConsumer::Context, false);
+        // make sure there is just one include directive per level
+        if (m_nIncludeCalls[0] == 1) mainFile << "#include \"level1.txt\"\n";
+        for (DeclGroupRef::iterator b = D.begin(), e = D.end(); b != e; ++b)
+        {
+            mainDumper.Visit(*b);
+        }
+        mainFile.close();
+
+#if 0
+        auto& additionalDecls = mainDumper.doGetNodeDelegate().m_neededDecls;
+        for (int includeLevel = 1; additionalDecls.size(); ++includeLevel)
+        {
+            char sIncludeName[20];
+            sprintf(sIncludeName, "c:\\level%d.txt", includeLevel);
+            resizeIncludeCalls(includeLevel);
+            llvm::raw_fd_ostream helperFile(llvm::StringRef(sIncludeName), OutErrorInfo, m_nIncludeCalls[includeLevel]++ == 0 ? llvm::sys::fs::OF_None : llvm::sys::fs::OF_Append);
+            ASTDumper helperDumper(helperFile, *BackendConsumer::Context, false);
+            // make sure there is just one include directive per level
+            if (m_nIncludeCalls[includeLevel] == 1) helperFile << "#include \"level" << includeLevel + 1 << ".txt\"\n";
+            helperDumper.doGetNodeDelegate().forceDumping();
+            for (auto it = additionalDecls.begin(); it != additionalDecls.end(); ++it)
+            {
+                assert(m_completedDecls.find(it->first) == m_completedDecls.end()); // this must be first time we see this decl
+
+                helperFile << "//********************* " << it->second << "\n";
+                helperDumper.Visit(it->first);
+
+                m_completedDecls[it->first] = it->second; // remember we completed this decl
+            }
+            helperFile.close();
+
+            additionalDecls.clear();
+            assert(additionalDecls.size() == 0);
+
+            // create a list of additional decls we need to dump (for the next level include)
+            auto& nextLevelDecls = helperDumper.doGetNodeDelegate().m_neededDecls;
+            for (auto it = nextLevelDecls.begin(); it != nextLevelDecls.end(); ++it)
+            {
+                if (m_completedDecls.find(it->first) != m_completedDecls.end()) // did we process this already?
+                    continue;
+                additionalDecls[it->first] = it->second;
+            }
+        }
+#endif
+
+        return BackendConsumer::HandleTopLevelDecl(D);
+    }
+  };
+
+  } // namespace clang
 
 bool ClangDiagnosticHandler::handleDiagnostics(const DiagnosticInfo &DI) {
   BackendCon->DiagnosticHandlerImpl(DI);
@@ -953,7 +1046,7 @@ CodeGenAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
     CoverageInfo = CodeGen::CoverageMappingModuleGen::setUpCoverageCallbacks(
         CI.getPreprocessor());
 
-  std::unique_ptr<BackendConsumer> Result(new BackendConsumer(
+  std::unique_ptr<KirillASTConsumer> Result(new KirillASTConsumer(CI.getSourceManager(),
       BA, CI.getDiagnostics(), CI.getHeaderSearchOpts(),
       CI.getPreprocessorOpts(), CI.getCodeGenOpts(), CI.getTargetOpts(),
       CI.getLangOpts(), std::string(InFile), std::move(LinkModules),

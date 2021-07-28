@@ -32,9 +32,9 @@ InitLLVM::InitLLVM(int &Argc, const char **&Argv,
     sys::SetOneShotPipeSignalFunction(sys::DefaultOneShotPipeSignalHandler);
   // Initialize the stack printer after installing the one-shot pipe signal
   // handler, so we can perform a sigaction() for SIGPIPE on Unix if requested.
-  StackPrinter.emplace(Argc, Argv);
-  sys::PrintStackTraceOnErrorSignal(Argv[0]);
-  install_out_of_memory_new_handler();
+  //StackPrinter.emplace(Argc, Argv);
+  //sys::PrintStackTraceOnErrorSignal(Argv[0]);
+  //install_out_of_memory_new_handler();
 
 #ifdef _WIN32
   // We use UTF-8 as the internal character encoding. On Windows,

@@ -330,6 +330,16 @@ static inline __device__ void __brkpt(int __c) { __brkpt(); }
 
 #pragma pop_macro("__host__")
 
+template <class T>
+inline void __nv_tex_surf_handler(const char *desc, T * ptr, cudaTextureObject_t obj, float x, float y)
+{
+}
+
+template <class T>
+inline void __nv_tex_surf_handler(const char *desc, T * ptr, cudaTextureObject_t obj, float x, float y, float z)
+{
+}
+
 #include "texture_indirect_functions.h"
 
 // Restore state of __CUDA_ARCH__ and __THROW we had on entry.

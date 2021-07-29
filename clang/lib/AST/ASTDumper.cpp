@@ -137,6 +137,7 @@ void ASTDumper::dumpTemplateDecl(const TemplateDecl *D, bool DumpExplicitInst) {
 }
 
 void ASTDumper::VisitFunctionTemplateDecl(const FunctionTemplateDecl *D) {
+  if (!NodeDumper.isDumpedChild()) return;
   // FIXME: We don't add a declaration of a function template specialization
   // to its context when it's explicitly instantiated, so dump explicit
   // instantiations when we dump the template itself.
@@ -144,10 +145,12 @@ void ASTDumper::VisitFunctionTemplateDecl(const FunctionTemplateDecl *D) {
 }
 
 void ASTDumper::VisitClassTemplateDecl(const ClassTemplateDecl *D) {
+  if (!NodeDumper.isDumpedChild()) return;
   dumpTemplateDecl(D, false);
 }
 
 void ASTDumper::VisitVarTemplateDecl(const VarTemplateDecl *D) {
+  if (!NodeDumper.isDumpedChild()) return;
   dumpTemplateDecl(D, false);
 }
 

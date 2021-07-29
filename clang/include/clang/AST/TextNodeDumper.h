@@ -35,7 +35,34 @@ class TextTreeStructure {
   const bool ShowColors;
 
   /// Pending[i] is an action to dump an entity at level i.
-  llvm::SmallVector<std::function<void(bool IsLastChild)>, 32> Pending;
+  struct ChildInfo
+  {
+      ChildInfo()
+      {
+      }
+      ChildInfo(std::function<void(bool IsLastChild)>&& f) : m_f(std::move(f))
+      {
+      }
+      std::function<void(bool IsLastChild)> m_f;
+      void operator ()(bool IsLastChild) { m_f(IsLastChild); }
+      void setDumpCounter(int* pDumpCounter)
+      {
+          assert(pDumpCounter && !m_pDumpCounter);
+          m_pDumpCounter = pDumpCounter;
+          ++(*m_pDumpCounter);
+      }
+      ~ChildInfo()
+      {
+          if (m_pDumpCounter)
+          {
+              assert(*m_pDumpCounter > 0);
+              --(*m_pDumpCounter);
+          }
+      }
+  private:
+      int* m_pDumpCounter = nullptr;
+  };
+  llvm::SmallVector<ChildInfo, 32> Pending;
 
   /// Indicates whether we're at the top level.
   bool TopLevel = true;
@@ -46,11 +73,17 @@ class TextTreeStructure {
   /// Prefix for currently-being-dumped entity.
   std::string Prefix;
 
+  int m_nDumpedChildren = 0; // if the counter is 0 - we don't dump
+
 public:
   /// Add a child of the current node.  Calls DoAddChild without arguments
   template <typename Fn> void AddChild(Fn DoAddChild) {
     return AddChild("", DoAddChild);
   }
+
+  void forceDumping() { ++m_nDumpedChildren; }
+  void markCurChildForDumping() { Pending.back().setDumpCounter(&m_nDumpedChildren); }
+  bool isDumpedChild() const { return m_nDumpedChildren > 0; }
 
   /// Add a child of the current node with an optional label.
   /// Calls DoAddChild without arguments.
@@ -65,7 +98,7 @@ public:
         Pending.pop_back();
       }
       Prefix.clear();
-      OS << "\n";
+      if (isDumpedChild()) OS << "\n";
       TopLevel = true;
       return;
     }
@@ -85,11 +118,14 @@ public:
       //
       // Note that the first level gets no prefix.
       {
-        OS << '\n';
-        ColorScope Color(OS, ShowColors, IndentColor);
-        OS << Prefix << (IsLastChild ? '`' : '|') << '-';
-        if (!Label.empty())
-          OS << Label << ": ";
+         if (isDumpedChild())
+         {
+           OS << '\n';
+           ColorScope Color(OS, ShowColors, IndentColor);
+           OS << Prefix << (IsLastChild ? '`' : '|') << '-';
+           if (!Label.empty())
+           OS << Label << ": ";
+         }
 
         this->Prefix.push_back(IsLastChild ? ' ' : '|');
         this->Prefix.push_back(' ');
@@ -112,10 +148,10 @@ public:
     };
 
     if (FirstChild) {
-      Pending.push_back(std::move(DumpWithIndent));
+      Pending.push_back(ChildInfo(DumpWithIndent));
     } else {
       Pending.back()(false);
-      Pending.back() = std::move(DumpWithIndent);
+      Pending.back() = ChildInfo(DumpWithIndent);
     }
     FirstChild = false;
   }

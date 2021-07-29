@@ -456,7 +456,6 @@ namespace clang {
         }
         mainFile.close();
 
-#if 0
         auto& additionalDecls = mainDumper.doGetNodeDelegate().m_neededDecls;
         for (int includeLevel = 1; additionalDecls.size(); ++includeLevel)
         {
@@ -491,7 +490,6 @@ namespace clang {
                 additionalDecls[it->first] = it->second;
             }
         }
-#endif
 
         return BackendConsumer::HandleTopLevelDecl(D);
     }

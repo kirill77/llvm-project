@@ -714,7 +714,9 @@ void TextNodeDumper::dumpBareDeclRef(const Decl *D) {
 
   {
     ColorScope Color(OS, ShowColors, DeclKindNameColor);
-    OS << D->getDeclKindName();
+    const char* s = D->getDeclKindName();
+    notifyNeededDecl(D, "%s: %s(%d)", s, __FILE__, __LINE__);
+    OS << s;
   }
   dumpPointer(D);
 

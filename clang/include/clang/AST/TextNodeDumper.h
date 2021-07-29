@@ -13,6 +13,8 @@
 #ifndef LLVM_CLANG_AST_TEXTNODEDUMPER_H
 #define LLVM_CLANG_AST_TEXTNODEDUMPER_H
 
+#include <unordered_map>
+#include <stdarg.h>
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDumperUtils.h"
 #include "clang/AST/AttrVisitor.h"
@@ -201,6 +203,17 @@ class TextNodeDumper
 public:
   TextNodeDumper(raw_ostream &OS, const ASTContext &Context, bool ShowColors);
   TextNodeDumper(raw_ostream &OS, bool ShowColors);
+
+  std::unordered_map<const Decl*, std::string> m_neededDecls; // map of all nodes that are needed for target node
+  void notifyNeededDecl(const Decl* p, const char* format, ...)
+  {
+      char buffer[256];
+      va_list args;
+      va_start(args, format);
+      vsprintf(buffer, format, args);
+      va_end(args);
+      m_neededDecls[p] = buffer;
+  }
 
   void Visit(const comments::Comment *C, const comments::FullComment *FC);
 
